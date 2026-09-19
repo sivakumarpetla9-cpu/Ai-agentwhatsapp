@@ -1,0 +1,31 @@
+﻿# Git and environment files
+.git
+.gitignore
+.env
+.env.*
+!.env.example
+
+# Local SQLite databases
+*.db
+*.sqlite3
+dev_simulator.db
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+
+# Python bytecode and caches
+__pycache__/
+*.py[cod]
+*.class
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+
+# Documentation and scratch
+scratch/
+docs/
+*.md
+!README.md
