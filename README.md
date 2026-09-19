@@ -341,4 +341,64 @@ WHATSAPP_REQUEST_TIMEOUT=10.0
 - **PII Protection**: Customer phone numbers are masked in all logs and operational queues (e.g. `+9******77`).
 - **Failure Isolation**: If Meta API returns an error or encounters a network timeout, the application logs a sanitized error, marks the notification as `FAILED`, and **never** rolls back committed kitchen orders or table sessions.
 
+---
+
+## 🚀 Production Deployment on Render (Step 12)
+
+The backend is fully configured for continuous deployment on **Render** using Docker and managed PostgreSQL.
+
+### 1. One-Click Blueprint Deployment (`render.yaml`)
+
+1. Push your repository to GitHub (ensure `.env` and `*.db` are never committed):
+   ```bash
+   git remote add origin https://github.com/<your-username>/whatsapp-restaurant-ordering.git
+   git branch -M main
+   git push -u origin main
+   ```
+2. Navigate to [Render Dashboard](https://dashboard.render.com/) $\rightarrow$ **Blueprints** $\rightarrow$ **New Blueprint Instance**.
+3. Connect your repository. Render reads `render.yaml` and provisions:
+   - **Docker Web Service**: Automatically listening on Render's dynamic `$PORT`.
+   - **Pre-Deploy Migration**: Runs `alembic upgrade head` automatically before traffic routing.
+   - **PostgreSQL Database**: Auto-generates credentials and links `DATABASE_URL`.
+
+### 2. Required Production Environment Variables on Render
+
+In the Render Dashboard for `whatsapp-restaurant-backend`, configure the following secret values:
+- `WHATSAPP_ACCESS_TOKEN`: Your permanent Meta System User Access Token.
+- `WHATSAPP_PHONE_NUMBER_ID`: Your Meta WhatsApp Phone Number ID.
+- `WHATSAPP_BUSINESS_ACCOUNT_ID`: Your Meta WhatsApp Business Account ID.
+- `WHATSAPP_APP_SECRET`: Your Meta App Secret (used for HMAC-SHA256 signature verification).
+- `WHATSAPP_VERIFY_TOKEN`: Auto-generated or custom verification secret for webhook handshake.
+
+### 3. Database Initialization (First-Time Only)
+
+Once the service is live and migrations have completed:
+```bash
+# In Render Web Shell or via SSH:
+python scripts/seed_data.py
+```
+This idempotently initializes the default restaurant (`SpiceBox`), 5 tables with unique QR tokens, 5 categories, and 8 menu items.
+
+### 4. Meta Webhook Subscription
+
+In the [Meta for Developers App Dashboard](https://developers.facebook.com/apps/):
+1. Go to **WhatsApp** $\rightarrow$ **Configuration**.
+2. Set **Callback URL** to:
+   ```text
+   https://<your-service-name>.onrender.com/api/v1/integrations/whatsapp/webhook
+   ```
+3. Set **Verify Token** to match your `WHATSAPP_VERIFY_TOKEN`.
+4. Click **Verify and Save**. Meta will execute a `GET` request to verify the token.
+5. In **Webhook fields**, subscribe to `messages`.
+
+### 5. Live End-to-End Customer Flow
+
+1. Open WhatsApp and send a message (e.g. `Hi`) to your WhatsApp Cloud API phone number.
+2. The bot responds with interactive table selection buttons.
+3. Choose a table $\rightarrow$ browse menu categories $\rightarrow$ select items $\rightarrow$ confirm order.
+4. Kitchen staff manages order transitions (`NEW` $\rightarrow$ `ACCEPTED` $\rightarrow$ `PREPARING` $\rightarrow$ `READY` $\rightarrow$ `SERVED`).
+5. Outbound WhatsApp messages update the customer in real time.
+6. Request bill (`bill`) and settle (`settle`) to complete the dining session.
+
+
 

@@ -121,7 +121,49 @@ The following operational capabilities are external deployment-layer responsibil
 
 ---
 
-## 11. Commercial Compliance Disclaimers
+---
+
+## 11. Production Deployment on Render (Step 12)
+
+The production backend is designed for continuous deployment on **Render** using containerized Docker Web Services and managed PostgreSQL:
+
+### 11.1 Infrastructure Blueprint (`render.yaml`)
+- **Web Service**:
+  - Runtime: Docker (`Dockerfile`)
+  - Dynamic Port: Render automatically passes `$PORT` (typically 10000); Uvicorn binds dynamically to `0.0.0.0:${PORT:-8000}`.
+  - Health Probe: `GET /api/v1/health/ready` (validates database readiness and HTTP responsiveness).
+  - Pre-Deploy Step: `alembic upgrade head` applies all database migrations automatically before traffic cutover.
+- **Database**:
+  - Managed PostgreSQL instance (`restaurant-postgres`).
+  - Automatic `DATABASE_URL` injection in `postgres://...` format, seamlessly converted by `app/core/config.py` to `postgresql+asyncpg://` for async queries and `postgresql+psycopg://` for migrations.
+
+### 11.2 Environment Variables Matrix
+
+| Variable | Recommended Production Value | Description |
+| :--- | :--- | :--- |
+| `ENVIRONMENT` | `production` | Enables strict production validation rules |
+| `DEBUG` | `false` | Disables debug stack traces in HTTP responses |
+| `SECRET_KEY` | *(Render auto-generated 64-char key)* | Cryptographic signing secret |
+| `DATABASE_URL` | *(Render linked connection string)* | Managed PostgreSQL connection string |
+| `WHATSAPP_MODE` | `meta` | Enables real Meta WhatsApp Cloud API client |
+| `WHATSAPP_API_VERSION` | `v21.0` | Meta Graph API version |
+| `WHATSAPP_ACCESS_TOKEN` | *(Permanent System User Token)* | Meta Graph API access token |
+| `WHATSAPP_PHONE_NUMBER_ID`| *(15-digit Phone Number ID)* | Sender WhatsApp Phone Number ID |
+| `WHATSAPP_BUSINESS_ACCOUNT_ID`| *(15-digit WABA ID)* | WhatsApp Business Account ID |
+| `WHATSAPP_APP_SECRET` | *(Meta App Secret)* | Used for webhook HMAC-SHA256 signature verification |
+| `WHATSAPP_VERIFY_TOKEN` | *(Render auto-generated token)* | Shared secret for Meta webhook subscription challenge |
+| `WHATSAPP_WEBHOOK_VERIFY_SIGNATURE` | `true` | Enforces HMAC verification on all incoming webhook POST requests |
+| `WHATSAPP_REQUEST_TIMEOUT` | `10.0` | Timeout in seconds for outbound calls to Meta Graph API |
+
+### 11.3 Meta Webhook Configuration
+1. **Callback URL**: `https://<render-service-name>.onrender.com/api/v1/integrations/whatsapp/webhook`
+2. **Verify Token**: Matches `WHATSAPP_VERIFY_TOKEN` set in Render environment.
+3. **Webhook Subscriptions**: Subscribe to `messages` event.
+4. Handshake verification executes via constant-time comparison in `GET /webhook`, responding with `hub.challenge`.
+
+---
+
+## 12. Commercial Compliance Disclaimers
 
 > [!IMPORTANT]
 > **Commercial Readiness & Compliance Notice**:
