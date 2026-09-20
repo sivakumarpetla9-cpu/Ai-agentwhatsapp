@@ -85,7 +85,15 @@ class Settings(BaseSettings):
         """
         url = self.DATABASE_URL or ""
         if "postgresql+asyncpg://" in url:
-            return url.replace("postgresql+asyncpg://", "postgresql+psycopg://")
+            sync_url = url.replace("postgresql+asyncpg://", "postgresql+psycopg://")
+            if "?" in sync_url and "ssl=" in sync_url:
+                from sqlalchemy.engine import make_url
+                u = make_url(sync_url)
+                q = dict(u.query)
+                if "ssl" in q and "sslmode" not in q:
+                    q["sslmode"] = q.pop("ssl")
+                    sync_url = u.set(query=q).render_as_string(hide_password=False)
+            return sync_url
         if "sqlite+aiosqlite://" in url:
             return url.replace("sqlite+aiosqlite://", "sqlite://")
         return url.replace("+asyncpg", "").replace("+aiosqlite", "")
@@ -93,19 +101,34 @@ class Settings(BaseSettings):
     @model_validator(mode="after")
     def validate_and_normalize_configuration(self) -> "Settings":
         """
-        Normalize database URLs (e.g. Render's postgres:// to postgresql+asyncpg://)
+        Normalize database URLs (e.g. Render/Neon postgres:// to postgresql+asyncpg://)
         and enforce strict security validation when running in production environment
         or when WHATSAPP_MODE=meta.
         """
-        # 1. Normalize DATABASE_URL
-        raw_db_url = self.DATABASE_URL or self.CUSTOM_DATABASE_URL
+        # 1. Normalize DATABASE_URL (CUSTOM_DATABASE_URL has explicit override precedence)
+        raw_db_url = self.CUSTOM_DATABASE_URL or self.DATABASE_URL
         if raw_db_url:
             if raw_db_url.startswith("postgres://"):
-                self.DATABASE_URL = raw_db_url.replace("postgres://", "postgresql+asyncpg://", 1)
+                raw_db_url = raw_db_url.replace("postgres://", "postgresql+asyncpg://", 1)
             elif raw_db_url.startswith("postgresql://") and not raw_db_url.startswith("postgresql+"):
-                self.DATABASE_URL = raw_db_url.replace("postgresql://", "postgresql+asyncpg://", 1)
-            else:
-                self.DATABASE_URL = raw_db_url
+                raw_db_url = raw_db_url.replace("postgresql://", "postgresql+asyncpg://", 1)
+
+            # For asyncpg, normalize query parameters (sslmode -> ssl, strip channel_binding)
+            if "postgresql+asyncpg://" in raw_db_url and "?" in raw_db_url:
+                from sqlalchemy.engine import make_url
+                u = make_url(raw_db_url)
+                q = dict(u.query)
+                changed = False
+                if "sslmode" in q:
+                    q["ssl"] = q.pop("sslmode")
+                    changed = True
+                if "channel_binding" in q:
+                    q.pop("channel_binding")
+                    changed = True
+                if changed:
+                    raw_db_url = u.set(query=q).render_as_string(hide_password=False)
+
+            self.DATABASE_URL = raw_db_url
         else:
             self.DATABASE_URL = (
                 f"postgresql+asyncpg://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}"

@@ -3,6 +3,7 @@ from app.core.config import Settings
 
 def test_default_settings() -> None:
     settings = Settings(
+        _env_file=None,
         POSTGRES_SERVER="localhost",
         POSTGRES_PORT=5432,
         POSTGRES_USER="postgres",
@@ -50,4 +51,29 @@ def test_production_accepts_render_postgres() -> None:
     )
     assert settings.DATABASE_URL.startswith("postgresql+asyncpg://")
     assert not settings.DEBUG
+
+
+def test_neon_postgres_url_normalization() -> None:
+    neon_url = "postgresql://neondb_owner:npg_secret123@ep-cool-fog-123456.us-east-2.aws.neon.tech/neondb?sslmode=require&channel_binding=require"
+    settings = Settings(DATABASE_URL=neon_url)
+    # asyncpg requires ssl=require (not sslmode=require) and omits channel_binding
+    assert settings.DATABASE_URL == "postgresql+asyncpg://neondb_owner:npg_secret123@ep-cool-fog-123456.us-east-2.aws.neon.tech/neondb?ssl=require"
+    # psycopg uses sslmode=require
+    assert settings.SYNC_DATABASE_URL == "postgresql+psycopg://neondb_owner:npg_secret123@ep-cool-fog-123456.us-east-2.aws.neon.tech/neondb?sslmode=require"
+
+
+def test_production_accepts_neon_postgres() -> None:
+    neon_url = "postgresql://neondb_owner:npg_secret123@ep-cool-fog-123456.us-east-2.aws.neon.tech/neondb?sslmode=require&channel_binding=require"
+    settings = Settings(
+        ENVIRONMENT="production",
+        DEBUG=False,
+        SECRET_KEY="A" * 32,
+        DATABASE_URL=neon_url,
+        WHATSAPP_MODE="mock",
+    )
+    assert settings.DATABASE_URL.startswith("postgresql+asyncpg://")
+    assert "ssl=require" in settings.DATABASE_URL
+    assert "sslmode=require" in settings.SYNC_DATABASE_URL
+    assert not settings.DEBUG
+
 
