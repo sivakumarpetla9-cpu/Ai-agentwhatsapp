@@ -3,7 +3,7 @@ services:
   - type: web
     name: whatsapp-restaurant-backend
     env: docker
-    plan: starter
+    plan: free
     healthCheckPath: /api/v1/health/ready
     autoDeploy: true
     preDeployCommand: alembic upgrade head
@@ -15,9 +15,7 @@ services:
       - key: SECRET_KEY
         generateValue: true
       - key: DATABASE_URL
-        fromDatabase:
-          name: restaurant-postgres
-          property: connectionString
+        sync: false
       - key: WHATSAPP_MODE
         value: meta
       - key: WHATSAPP_API_VERSION
@@ -37,9 +35,3 @@ services:
       - key: WHATSAPP_REQUEST_TIMEOUT
         value: "10.0"
 
-databases:
-  # Managed Production PostgreSQL Database
-  - name: restaurant-postgres
-    databaseName: restaurant_ordering
-    user: restaurant_user
-    plan: starter
